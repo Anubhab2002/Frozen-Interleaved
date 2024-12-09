@@ -12,19 +12,19 @@ trainer:
   max_epochs: 1 
   precision: 16
   gradient_clip_val: 1.0
-  val_check_interval: 0.1
+  val_check_interval: 1.0
   resume_from_checkpoint: null
 
 # data loader
 loader:
-  batch_size: 10
+  batch_size: 1
   pin_memory: false
-  num_workers: 5
+  num_workers: 16
 
 # logger (tensorboard)
 logger:
-  name: null
-  version: null
+  name: run-sample-DCC
+  version: 1.0.0
   save_dir: ~/logs
 
 # checkpoint
@@ -36,7 +36,7 @@ checkpoint:
   mode: "min"
 
 # resume training
-checkpoint_path: null
+checkpoint_path: ckpt
 
 # hydra-specific
 hydra:
@@ -45,6 +45,6 @@ hydra:
 
 defaults:
   - _self_
-  - dataset: CC3M
+  - dataset: DCC
   - optimizer: Frozen
   - override hydra/job_logging: disabled

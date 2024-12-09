@@ -29,10 +29,10 @@ class Experiment(pl.LightningModule):
         N = self.num_image_tokens
 
         kwargs = {
-            'pixel_values': batch['pixel_values'],
-            'input_ids': batch['input_ids'],
-            'attention_mask': batch['attention_mask'],
-            'image_token_mask': batch['image_token_mask'],
+            'pixel_values': batch['pixel_values'].to('cuda:0'),
+            'input_ids': batch['input_ids'].to('cuda:0'),
+            'attention_mask': batch['attention_mask'].to('cuda:0'),
+            'image_token_mask': batch['image_token_mask'].to('cuda:0'),
         }
 
         output = self.forward(**kwargs)
@@ -47,6 +47,7 @@ class Experiment(pl.LightningModule):
         return self.training_step(batch, batch_index)
 
     def validation_epoch_end(self, outputs):
+        print("validation done...........")
         val_loss = torch.stack([x['loss'] for x in outputs]).mean()
         val_perplexity = val_loss.exp()
         self.log('val_loss', val_loss)

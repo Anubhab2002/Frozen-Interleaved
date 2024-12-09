@@ -99,6 +99,7 @@ class OPTCaptioningModel(nn.Module):
         )
 
     def encode_images(self, pixel_values):
+        # print("Pixel values device: ", pixel_values.device)
         batch_size = pixel_values.shape[0]
 
         if self.frozen_image_encoder:
@@ -112,8 +113,8 @@ class OPTCaptioningModel(nn.Module):
             visual = visual.pooler_output
 
         visual = visual.reshape(batch_size, self.d_image_encoder)
-        visual = self.proj_image_features(visual)
-        return visual
+        visual = self.proj_image_features(visual.to('cuda:0'))
+        return visual.to('cuda:0')
 
     def forward(self, *args, **kwargs):
         if 'pixel_values' in kwargs:
@@ -125,6 +126,9 @@ class OPTCaptioningModel(nn.Module):
     def generate(self, *args, **kwargs):
         if 'pixel_values' in kwargs:
             pixel_values = kwargs.pop('pixel_values')
+            print(pixel_values.shape)
             kwargs['image_features'] = self.encode_images(pixel_values)
-        return self.text_encoder.generate(*args, **kwargs,
+            print(kwargs['image_features'], kwargs['image_features'].shape)
+        x = self.text_encoder.generate(*args, **kwargs,
             return_dict_in_generate=True)
+        return x
