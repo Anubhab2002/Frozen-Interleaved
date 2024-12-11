@@ -700,15 +700,24 @@ class DCCDataset(torch_dataset):
         image_transform=None,
         tokenizer=None,
         num_image_tokens=0,
+        user_key='human',
+        assistant_key='gpt',
+        load_image=True
     ):
         super().__init__()
         print("1", path)
-        self.path = osp.abspath(osp.expanduser(path))
+        # self.path = osp.abspath(osp.expanduser(path))
+        self.path = path
         print("2", self.path)
         self.split = split
         self.image_transform = image_transform
         self.tokenizer = tokenizer
         self.num_image_tokens = num_image_tokens
+        
+        self.user_key = user_key
+        self.assistant_key = assistant_key
+        
+        self.load_image = load_image
 
         if self.tokenizer is None:
             self.tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-2.7b")
@@ -725,16 +734,51 @@ class DCCDataset(torch_dataset):
             to_filter=True,
             to_replace=True,
             image_path_by_url=create_image_path_by_url(
-                'datasets/DialogCC/image_names', 'datasets/DialogCC/images'
+                '/home/anubhab-pg/tmp/image_names', '/home/anubhab-pg/tmp/images_n'
             ),
-            to_unroll=True,
+            to_unroll=False,
             min_images_per_dialog=1,
-            n_samples=300,
-            to_split=True
+            to_split=False
         )
         self.dialogs = self.dialog_data.dialogs
         self.suffixes = self.dialog_data.suffixes
 
+    def transform_dialog_data_to_raw_data(
+        self, dialog: Dialog, suffix: str | None
+    ) -> List[Dict]:
+        # if not self.test:
+        #     assert suffix is not None, "suffix is None"
+        # else:
+        if suffix is None:
+            suffix = "dummy"
+        images = []
+        for utterance in dialog.utterances:
+            images.extend(utterance.images)
+        # print("The utterances are: ")
+        # for utterance in dialog.utterances:
+        #     print(self.format_utterance(utterance))
+        return {
+            "system_prompt": "Complete the following conversation",
+            "image": images,
+            "conversations": [
+                {
+                    "from": "human",
+                    "value": self.format_utterance(utterance),
+                }
+                for utterance in dialog.utterances
+            ]
+            + [
+                {
+                    "from": "gpt",
+                    "value": suffix,
+                },
+            ],
+        }
+    
+    def format_utterance(self, utterance: Utterance) -> str:
+        images_str = "<image>"*len(utterance.images)
+        return f"{images_str}{utterance.text}"
+    
     def image_token_id(self):
         return self.tokenizer.convert_tokens_to_ids(IMAGE_TOKEN)
 
@@ -756,11 +800,79 @@ class DCCDataset(torch_dataset):
         return len(self.dialogs)
 
     def __getitem__(self, index):
+        rng = np.random.RandomState(seed=42)
+        print("DIALOG: ", self.dialogs[index])
+        conv = self.dialogs[index]
+        unrolled = conv.unroll()
+        unrolled_filter_min_one_image = list(
+            filter(
+                lambda x: sum([len(u.images) for u in x.utterances]) >= 1,
+                unrolled,
+            )
+        )
+        
+        if len(unrolled_filter_min_one_image) == 0:
+            print(f"This shouldnot happen, couldnot find a unroll of data that has at least one image \n DialogId: {conv.idx}")
+            print(len(unrolled))
+            # NOT IMPLEMENTED
+            # print(self.transform_dialog_data_to_raw_data(conv, "dummy"))
+            return self.__getitem__(rng.randint(len(self)))
+        
+    
+        conv = unrolled_filter_min_one_image[rng.randint(len(unrolled_filter_min_one_image))]
+        splits = conv.create_splits()
+        random_split = splits[rng.randint(len(splits))]
+        
+        source = self.transform_dialog_data_to_raw_data(*random_split)
+        images_ = []
+        try:
+            if "image" in source:
+                # here we do not do any image preprocessing but rather
+                # let the processor handle everything
+                # in some cases this may cause slight differences
+                # but should totally be fine (e.g., official llava-1.5 does padding,
+                # but llava-1.5-hf (huggingface's implementation) does not)
+                if isinstance(source["image"], list):
+                    image_sources = source["image"]
+                elif isinstance(source["image"], str):
+                    image_sources = [source["image"]]
+                else:
+                    raise ValueError(f"Invalid image source type: {type(source['image'])}")
+
+                for image_path in image_sources:
+                    # if self.image_folder is not None:
+                    #     image_path = os.path.join(
+                    #         self.image_folder, image_path
+                    #     )
+                    if self.load_image:
+                        image = Image.open(image_path).convert("RGB")
+                        # sm745052: resize the image to 384x384
+                        # print(f"Original image size: {image.size}")
+                        image = image.resize((384, 384))
+                        # print(f"Resized image size: {image.size}")
+                        images_.append(image)
+                    else:
+                        images_.append(image_path)
+        except Exception as e:
+            print(f"Error in loading image/video: {e}")
+            return self.__getitem__(rng.randint(len(self)))
+        
+        system_prompt = None
+        if "system_prompt" in source:
+            system_prompt = source["system_prompt"]
+
+        convs = []
+        assert len(source["conversations"]) > 0, "No conversations found"
+        assert source["conversations"][-1]["from"] == self.assistant_key, "Last utterance should be from assistant"
+        assert set([conv["from"] for conv in source["conversations"][:-1]]) == set([self.user_key]), "All but last utterance should be from user"
+        for i, conv in enumerate(source["conversations"]):
+            convs.append(conv["value"])
+        
         prefix_with_context = []
-        suffixes = []
         images = []
 
-        dialog, suffix = self.dialogs[index], self.suffixes[index]
+        # dialog, suffix = self.dialogs[index], self.suffixes[index]
+        dialog, suffix = random_split[0], random_split[1]
 
         for idx in range(len(dialog.utterances)):
             text = dialog.utterances[idx].text
