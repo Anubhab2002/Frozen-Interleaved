@@ -605,6 +605,7 @@ class DialogData(Dataset):
                 dialogs.append(Dialog(utterances, dialog.idx))
         self.dialogs = dialogs
 
+
     def preprocess(self, dialog: Dialog) -> Dialog:
         """
         Preprocesses the dialog.
@@ -734,7 +735,7 @@ class DCCDataset(torch_dataset):
             to_filter=True,
             to_replace=True,
             image_path_by_url=create_image_path_by_url(
-                '/home/anubhab-pg/tmp/image_names', '/home/anubhab-pg/tmp/images_n'
+                '/teamspace/studios/this_studio/DialogCC/DialogCC/image_names', '/teamspace/studios/this_studio/DialogCC/DialogCC/images'
             ),
             to_unroll=False,
             min_images_per_dialog=1,
@@ -801,7 +802,7 @@ class DCCDataset(torch_dataset):
 
     def __getitem__(self, index):
         rng = np.random.RandomState(seed=42)
-        print("DIALOG: ", self.dialogs[index])
+        # print("DIALOG: ", self.dialogs[index])
         conv = self.dialogs[index]
         unrolled = conv.unroll()
         unrolled_filter_min_one_image = list(
@@ -919,7 +920,7 @@ def create_image_path_by_url(
     image_path_by_url = {}
     for file in os.listdir(image_names_dir):
         with open(os.path.join(image_names_dir, file)) as f:
-            image_names = pd.read_csv(f, sep="\t", header=None)
+            image_names = pd.read_csv(f, sep="\t", header=None, engine='python')
             for i in range(len(image_names)):
                 image_path_by_url[image_names.iloc[i, 0]] = os.path.join(
                     images_dir, str(image_names.iloc[i, 1])

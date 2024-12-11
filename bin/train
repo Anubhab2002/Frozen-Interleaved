@@ -10,6 +10,10 @@ from frozen.data import CaptioningDataModule, DialogDataModule as DataModule
 from frozen.experiment import Experiment
 from frozen.util import create_callbacks, create_logger, process_config
 
+from pytorch_lightning.loggers import WandbLogger
+
+# Add WandbLogger creation
+
 
 CONFIG_DIR = osp.abspath(osp.join(__file__, "../..", "config"))
 
@@ -18,15 +22,22 @@ def main(config):
     config = OmegaConf.to_container(config)
     config = pl.utilities.parsing.AttributeDict(config)
     config = process_config(config)
+
+    wandb_logger = WandbLogger(
+        project="Frozen-DCC",  # Replace with your WandB project name
+        name="Full-Run-1.0",       # Optional: A specific name for this run
+        save_dir=config["trainer"].get("~/wandb_logs"),  # Save directory
+        log_model="all",              # Logs model checkpoints
+    )
     pl.seed_everything(config["seed"])
     print(config)
 
     dm = DataModule(config)
     print("DM: ", dm.train_data.__len__())
-    logger = create_logger(config)
-    callbacks = None
+    logger = wandb_logger
+    callbacks, ckpt_path = None, None
     if logger is not None:
-        callbacks, ckpt_path = create_callbacks(config, logger.log_dir)
+        callbacks, ckpt_path = create_callbacks(config, logger.experiment.dir)
         config["trainer"]["resume_from_checkpoint"] = ckpt_path
 
     experiment = Experiment(config)

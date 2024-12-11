@@ -40,6 +40,7 @@ class Experiment(pl.LightningModule):
         shift_logits = output.logits[..., N:-1, :].contiguous()
         shift_labels = labels[..., N+1:].contiguous()
         loss = self.loss_fn(shift_logits.view(-1, V), shift_labels.view(-1))
+        self.log('train_loss', loss)
         return {'loss': loss}
 
     @torch.no_grad()

@@ -9,7 +9,7 @@ model:
 
 trainer:
   gpus: 1
-  max_epochs: 1 
+  max_epochs: 5
   precision: 16
   gradient_clip_val: 1.0
   val_check_interval: 1.0
@@ -17,13 +17,13 @@ trainer:
 
 # data loader
 loader:
-  batch_size: 1
+  batch_size: 16
   pin_memory: false
   num_workers: 16
 
 # logger (tensorboard)
 logger:
-  name: run-sample-DCC
+  name: run-full-DCC-1.0
   version: 1.0.0
   save_dir: ~/logs
 

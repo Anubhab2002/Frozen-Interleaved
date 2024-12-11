@@ -1,0 +1,43 @@
+{
+  "os": "Linux-5.15.0-1072-aws-x86_64-with-glibc2.31",
+  "python": "CPython 3.10.5",
+  "startedAt": "2024-12-11T16:19:17.486658Z",
+  "program": "/teamspace/studios/this_studio/Frozen-Interleaved/frozen/bin/train",
+  "codePath": "bin/train",
+  "git": {
+    "remote": "https://github.com/Anubhab2002/Frozen-Interleaved.git",
+    "commit": "c64155c280b81ab301d88f04d7a8ad3b0067dc16"
+  },
+  "email": "anubhab.saie@gmail.com",
+  "root": "/teamspace/studios/this_studio/Frozen-Interleaved/frozen",
+  "host": "ip-10-192-11-32",
+  "username": "zeus",
+  "executable": "/home/zeus/miniconda3/envs/cloudspace/bin/python",
+  "codePathLocal": "bin/train",
+  "cpu_count": 8,
+  "cpu_count_logical": 16,
+  "gpu": "NVIDIA L40S",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "589427720192",
+      "used": "88175063040"
+    }
+  },
+  "memory": {
+    "total": "133270261760"
+  },
+  "cpu": {
+    "count": 8,
+    "countLogical": 16
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA L40S",
+      "memoryTotal": "48305799168",
+      "cudaCores": 18176,
+      "architecture": "Ada"
+    }
+  ],
+  "cudaVersion": "12.2"
+}
