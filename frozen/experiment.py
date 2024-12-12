@@ -24,10 +24,10 @@ class Experiment(pl.LightningModule):
     def forward(self, *args, **kwargs):
         return self.model.forward(*args, **kwargs)
 
-    def training_step(self, batch, batch_index):
-        V = self.model.text_encoder.config.vocab_size
-        N = self.num_image_tokens
+    def training_step_(self, batch, batch_index):
+        V = self.model.text_encoder.config.vocab_size  # Vocabulary size
 
+        # Move inputs to the correct device
         kwargs = {
             'pixel_values': batch['pixel_values'].to('cuda:0'),
             'input_ids': batch['input_ids'].to('cuda:0'),
@@ -35,13 +35,65 @@ class Experiment(pl.LightningModule):
             'image_token_mask': batch['image_token_mask'].to('cuda:0'),
         }
 
+        # Forward pass
         output = self.forward(**kwargs)
-        labels = batch['input_ids'].clone()
+        logits = output.logits  # Shape: (B, seq_len, V)
+
+        # Shift logits and targets for causal language modeling
+        shift_logits = logits[:, :-1, :].contiguous()
+        shift_labels = kwargs['input_ids'][:, 1:].contiguous()
+        shift_loss_mask = kwargs['loss_mask'][:, 1:].contiguous()  # Mask shifted positions
+
+        # Compute loss only for suffix positions
+        loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
+        loss = loss_fn(shift_logits.view(-1, V), shift_labels.view(-1))
+        loss = loss.view(shift_loss_mask.size()) * shift_loss_mask  # Apply loss mask
+        loss = loss.sum() / shift_loss_mask.sum()  # Normalize
+
+        self.log('train_loss', loss, prog_bar=True, on_step=True, on_epoch=True)
+        return {'loss': loss}
+
+
+    def training_step(self, batch, batch_index, debug=False):
+        V = self.model.text_encoder.config.vocab_size  # Vocabulary size
+        N = self.num_image_tokens  # Number of image tokens
+
+        # Move inputs to the correct device
+        kwargs = {
+            'pixel_values': batch['pixel_values'].to('cuda:0'),
+            'input_ids': batch['input_ids'].to('cuda:0'),
+            'attention_mask': batch['attention_mask'].to('cuda:0'),
+            'image_token_mask': batch['image_token_mask'].to('cuda:0'),
+        }
+
+        # Forward pass
+        output = self.forward(**kwargs)
+
+        # if debug:
+        # print('Batch Size: ', batch['input_ids'].shape[0])
+        # print('INPUT Shape: ', batch['input_ids'].shape)
+        # print('TARGET: ', batch['suffix'])
+        # print('TARGET Shape: ', batch['suffix_ids'].shape)
+        # print("OUTPUT: ", output.logits.shape)
+
+
+        # Slice logits to match the suffix predictions
+        # Assuming suffix predictions come immediately after the prefix + image tokens
+        # shift_logits = output.logits[..., -suffix_ids.size(1):, :].contiguous()  # Shape: (B, S, V)
+
+        # Compute the loss using suffix targets
+        labels = batch['labels']
+        # print('logits: ', output.logits, output.logits.shape)
+        # print('labels: ', labels.shape)
         shift_logits = output.logits[..., N:-1, :].contiguous()
         shift_labels = labels[..., N+1:].contiguous()
         loss = self.loss_fn(shift_logits.view(-1, V), shift_labels.view(-1))
+
+        # Log the training loss
         self.log('train_loss', loss)
+        
         return {'loss': loss}
+
 
     @torch.no_grad()
     def validation_step(self, batch, batch_index):

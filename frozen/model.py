@@ -99,7 +99,7 @@ class OPTCaptioningModel(nn.Module):
         )
 
     def encode_images(self, pixel_values):
-        # print("Pixel values device: ", pixel_values.device)
+        # print("Pixel values shape: ", pixel_values.shape)
         batch_size = pixel_values.shape[0]
 
         if self.frozen_image_encoder:
@@ -126,9 +126,7 @@ class OPTCaptioningModel(nn.Module):
     def generate(self, *args, **kwargs):
         if 'pixel_values' in kwargs:
             pixel_values = kwargs.pop('pixel_values')
-            print(pixel_values.shape)
             kwargs['image_features'] = self.encode_images(pixel_values)
-            print(kwargs['image_features'], kwargs['image_features'].shape)
         x = self.text_encoder.generate(*args, **kwargs,
             return_dict_in_generate=True)
         return x

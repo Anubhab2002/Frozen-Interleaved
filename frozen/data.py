@@ -739,6 +739,7 @@ class DCCDataset(torch_dataset):
             ),
             to_unroll=False,
             min_images_per_dialog=1,
+            # n_samples=100,
             to_split=False
         )
         self.dialogs = self.dialog_data.dialogs
@@ -883,16 +884,18 @@ class DCCDataset(torch_dataset):
             prefix_with_context.append(text)      
 
         # check EOU token for OPT model
-        prefix_with_context = '<|EOU|>'.join(prefix_with_context)
+        prefix_with_context = '<s>'.join(prefix_with_context)
+        temp = self.tokenizer(prefix_with_context, return_tensors='pt')
+        l_pref = temp['input_ids'].shape[-1]
 
+        # add the suffix to the prefix
+        prefix_with_context = prefix_with_context + '<s>' + suffix
         inputs = self.tokenizer(prefix_with_context, return_tensors='pt')
+        labels = inputs['input_ids'].unsqueeze(0).clone()
+        labels[..., :l_pref] = -100 # suffix loss only
+        # suffix_inputs = self.tokenizer(suffix, return_tensors='pt')
         image_token_id = self.tokenizer.convert_tokens_to_ids(IMAGE_TOKEN)
         image_token_mask = (inputs['input_ids'] == image_token_id)
-
-        # print(IMAGE_TOKEN, image_token_id)
-        # print(inputs['input_ids'], prefix_with_context)
-        # print(image_token_mask)
-        # print(type(inputs['input_ids']))
 
         return {
             'pixel_values': self._read_image(images),
@@ -902,6 +905,7 @@ class DCCDataset(torch_dataset):
             'image_token_mask': image_token_mask.long(),
             'dialog_id': dialog.idx,
             'suffix': suffix,
+            'labels': labels
         }
   
 
@@ -1009,10 +1013,10 @@ class DialogDataModule(LightningDataModule):
         return self.val_dataloader()
 
 def dialog_collate_fn(batch):
-    # print("****************Batch: ", batch)
-    # batch = [x for x in batch if x['pixel_values'] is not None]
     batch_size = len(batch)
-    longest = max([x['input_ids'].numel() for x in batch])
+    longest_prefix = max(x['input_ids'].numel() for x in batch)
+
+    # Leave pixel_values logic untouched
     pixel_values = []
     for x in batch:
         pixel_values.extend(x['pixel_values'])  # Use extend to flatten the list
@@ -1020,34 +1024,81 @@ def dialog_collate_fn(batch):
     if pixel_values:
         pixel_values = torch.cat(pixel_values)
     else:
-        pixel_values = torch.empty(0) 
+        pixel_values = torch.empty(0)
 
-    # print("Pixel values device: ", pixel_values.device)
+    # Helper function to initialize padded tensors
+    def init_helper(value, dtype, batch_size, max_length):
+        return torch.full((batch_size, max_length), value, dtype=dtype)
 
-    def init_helper(value, dtype):
-        array = torch.empty((batch_size, longest), dtype=dtype)
-        array.fill_(value)
-        return array
+    # Initialize padded tensors for prefix inputs
+    input_ids = init_helper(PAD_TOKEN_ID, torch.long, batch_size, longest_prefix)
+    attention_mask = init_helper(0, torch.long, batch_size, longest_prefix)
+    image_token_mask = init_helper(0, torch.long, batch_size, longest_prefix)
+    labels = init_helper(0, torch.long, batch_size, longest_prefix)
 
-    input_ids = init_helper(PAD_TOKEN_ID, torch.long)
-    attention_mask = init_helper(0, torch.long)
-    image_token_mask = init_helper(False, torch.long)
-
+    # Fill the padded tensors
     for i in range(batch_size):
-        length = batch[i]['input_ids'].numel()
-        input_ids[i, :length] = batch[i]['input_ids']
-        attention_mask[i, :length] = batch[i]['attention_mask']
-        image_token_mask[i, :length] = batch[i]['image_token_mask']
+        prefix_length = batch[i]['input_ids'].numel()
 
-    # print("****INPUT IDS******: ", len(input_ids))
+        # Fill prefix tensors
+        input_ids[i, :prefix_length] = batch[i]['input_ids']
+        attention_mask[i, :prefix_length] = batch[i]['attention_mask']
+        image_token_mask[i, :prefix_length] = batch[i]['image_token_mask']
+        labels[i, :prefix_length] = batch[i]['labels']
+
+
+    return {
+        'pixel_values': pixel_values,  # Unchanged handling
+        'input_ids': input_ids,        # Padded prefix + suffix input IDs
+        'attention_mask': attention_mask,
+        'image_token_mask': image_token_mask,
+        'labels': labels,
+        'item_ids': [x['dialog_id'] for x in batch],     # List of dialog IDs
+        'suffix': [x['suffix'] for x in batch]        # Raw suffix text (optional)
+    }
+
+def dialog_collate_fn_(batch):
+    batch_size = len(batch)
+    longest_combined = max(x['input_ids'].numel() + x['suffix_ids'].numel() for x in batch)
+
+    # Leave pixel_values logic untouched
+    pixel_values = []
+    for x in batch:
+        pixel_values.extend(x['pixel_values'])  # Flatten the list
+
+    if pixel_values:
+        pixel_values = torch.cat(pixel_values)
+    else:
+        pixel_values = torch.empty(0)
+
+    # Helper function to initialize padded tensors
+    def init_helper(value, dtype, batch_size, max_length):
+        return torch.full((batch_size, max_length), value, dtype=dtype)
+
+    # Initialize combined tensors
+    combined_input_ids = init_helper(PAD_TOKEN_ID, torch.long, batch_size, longest_combined)
+    combined_attention_mask = init_helper(0, torch.long, batch_size, longest_combined)
+    loss_mask = init_helper(0, torch.bool, batch_size, longest_combined)
+
+    # Fill the combined tensors
+    for i in range(batch_size):
+        prefix_length = batch[i]['input_ids'].numel()
+        suffix_length = batch[i]['suffix_ids'].numel()
+        total_length = prefix_length + suffix_length
+        print("Sizes: ", prefix_length, suffix_length, batch[i]['input_ids'].shape, batch[i]['suffix_ids'].shape)
+        # Concatenate prefix and suffix
+        combined_input_ids[i, :total_length] = torch.cat([batch[i]['input_ids'], batch[i]['suffix_ids']], dim=2)
+        combined_attention_mask[i, :total_length] = 1  # Mask valid positions
+
+        # Mask suffix positions for loss calculation
+        loss_mask[i, prefix_length:total_length] = 1
 
     return {
         'pixel_values': pixel_values,
-        'input_ids': input_ids,
-        'attention_mask': attention_mask,
-        'image_token_mask': image_token_mask,
-        'item_ids': [x['dialog_id'] for x in batch],
-        'suffix': [x['suffix'] for x in batch],
+        'input_ids': combined_input_ids,        # Combined prefix and suffix
+        'attention_mask': combined_attention_mask,
+        'loss_mask': loss_mask,                # Mask for loss calculation
+        'item_ids': [x['dialog_id'] for x in batch],  # Dialog IDs
     }
 
 # if __name__ == '__main__':
