@@ -74,7 +74,7 @@ class COCODataset(Dataset):
         self.num_image_tokens = num_image_tokens
 
         if self.tokenizer is None:
-            self.tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-2.7b")
+            self.tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-350m")
 
         if not IMAGE_TOKEN in self.tokenizer.all_special_tokens:
             self.tokenizer.add_special_tokens(SPECIAL_TOKEN_DICT)
@@ -721,7 +721,7 @@ class DCCDataset(torch_dataset):
         self.load_image = load_image
 
         if self.tokenizer is None:
-            self.tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-2.7b")
+            self.tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-350m")
 
         if not IMAGE_TOKEN in self.tokenizer.all_special_tokens:
             self.tokenizer.add_special_tokens(SPECIAL_TOKEN_DICT)
@@ -892,7 +892,7 @@ class DCCDataset(torch_dataset):
         prefix_with_context = prefix_with_context + '<s>' + suffix
         inputs = self.tokenizer(prefix_with_context, return_tensors='pt')
         labels = inputs['input_ids'].unsqueeze(0).clone()
-        labels[..., :l_pref] = -100 # suffix loss only
+        labels[..., :l_pref+1] = -100 # suffix loss only
         # suffix_inputs = self.tokenizer(suffix, return_tensors='pt')
         image_token_id = self.tokenizer.convert_tokens_to_ids(IMAGE_TOKEN)
         image_token_mask = (inputs['input_ids'] == image_token_id)
@@ -969,7 +969,7 @@ class DialogDataModule(LightningDataModule):
         return self.config.get('model', dict())
 
     def init_tokenizer(self):
-        arch = self.model_config.get('text_encoder', 'facebook/opt-2.7b')
+        arch = self.model_config.get('text_encoder', 'facebook/opt-350m')
         self.tokenizer = GPT2Tokenizer.from_pretrained(arch)
 
     def init_image_transform(self):

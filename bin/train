@@ -8,6 +8,7 @@ from omegaconf import OmegaConf
 
 from frozen.data import CaptioningDataModule, DialogDataModule as DataModule
 from frozen.experiment import Experiment
+from frozen.experiment2 import Experiment2
 from frozen.util import create_callbacks, create_logger, process_config
 
 from pytorch_lightning.loggers import WandbLogger
@@ -25,7 +26,7 @@ def main(config):
 
     wandb_logger = WandbLogger(
         project="Frozen-DCC",  # Replace with your WandB project name
-        name="Full-Run-2.3-bs8",       # Optional: A specific name for this run
+        name="Full-Run-3.8-bs2_im_lm_gradacc",       # Optional: A specific name for this run
         save_dir=config["trainer"].get("~/wandb_logs"),  # Save directory
         log_model="all",              # Logs model checkpoints
     )

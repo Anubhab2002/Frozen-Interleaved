@@ -77,7 +77,7 @@ class OPTCaptioningModel(nn.Module):
         self.text_encoder.resize_token_embeddings(num_embeddings+1)
 
     def init_text_encoder(self):
-        architecture = self.config.get('text_encoder', 'facebook/opt-2.7b')
+        architecture = self.config.get('text_encoder', 'facebook/opt-350m')
         pretrained = self.config.get('pretrained_text_encoder', True)
 
         if pretrained:
